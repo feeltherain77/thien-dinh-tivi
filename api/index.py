@@ -7,7 +7,7 @@ import hashlib
 class handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
-        # Sử dụng trạm trung chuyển AllOrigins để lách Cloudflare của Thiên Đình
+        # Dùng trung gian AllOrigins lách Cloudflare chặn bot của Vercel
         PROXY_URL = "https://api.allorigins.win/get?url=https://sv2.thiendinh3.live/trang-chu"
         
         channels_list = []
@@ -18,7 +18,7 @@ class handler(BaseHTTPRequestHandler):
                 data = response.json()
                 html = data.get('contents', '')
                 
-                # Quét mọi link trận đấu trên trang chủ
+                # Quét link các trận đấu trên trang chủ
                 raw_matches = re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL)
                 
                 for href, content in raw_matches:
@@ -30,43 +30,44 @@ class handler(BaseHTTPRequestHandler):
                     if match_url.startswith('/'):
                         match_url = "https://sv2.thiendinh3.live" + match_url
                         
-                    # Tránh quét trùng bài
-                    if any(c['sources'][0]['contents'][0]['stream_links'][0]['url'] == match_url for c in channels_list if c.get('sources')):
+                    # Chặn quét trùng lặp dữ liệu
+                    if any(c['sources'][0]['contents'][0]['streams'][0]['stream_links'][0]['url'] == match_url for c in channels_list if c.get('sources')):
                         continue
 
+                    # Làm sạch HTML bóc chữ lấy thông tin trận đấu
                     clean_content = re.sub(r'<[^>]+>', ' ', content)
                     clean_content = re.sub(r'\s+', ' ', clean_content).strip()
                     
                     if len(clean_content) < 5:
                         continue
 
-                    # ⏳ Bắt giờ thi đấu
+                    # Tách lấy Giờ thi đấu (xx:xx)
                     time_search = re.search(r'(\d{2}:\d{2})', clean_content)
                     match_time = time_search.group(1) if time_search else "LIVE"
 
-                    # 🎙️ Bắt tên BLV
+                    # Tách lấy tên BLV
                     blv_search = re.search(r'(BLV\s+[^<|\s]+)', clean_content, re.IGNORECASE)
                     blv_name = blv_search.group(1).strip() if blv_search else "Mỳ Tôm"
 
-                    # 🖼️ Bắt logo
+                    # Tách lấy Logo trận đấu
                     logo_search = re.search(r'(?:src|data-src)="([^"]+)"', content)
                     match_logo = logo_search.group(1) if logo_search else "https://sv2.thiendinh3.live/assets/images/logo.png"
                     if match_logo.startswith('/'):
                         match_logo = "https://sv2.thiendinh3.live" + match_logo
 
-                    # ⚽ Bắt tên trận đấu
+                    # Tách lấy tên trận đấu (Xóa giờ và BLV ra khỏi chuỗi tên)
                     match_name = clean_content.replace(match_time, "").replace(blv_name, "").strip()
                     match_name = " ".join(match_name.split())
                     if not match_name or len(match_name) < 3:
                         match_name = "Trận Đấu Đang Diễn Ra"
 
-                    # Tạo ID hash cho đồng bộ các tầng dữ liệu
+                    # Tạo mã ID băm để đồng bộ các nhánh con
                     hash_id = hashlib.md5(match_url.encode('utf-8')).hexdigest()[:12]
 
-                    # Thêm trận vào danh sách channels theo cấu trúc nâng cao
+                    # 👑 XÂY DỰNG KHUÔN 6 TẦNG CHUẨN ĐÉT HỘI QUÁN TV
                     channels_list.append({
                         "id": f"td-{hash_id}",
-                        "name": match_name,
+                        "name": f"⚽ {match_name} | {match_time}",
                         "type": "single",
                         "display": "thumbnail-only",
                         "enable_detail": False,
@@ -77,22 +78,34 @@ class handler(BaseHTTPRequestHandler):
                             "url": match_logo
                         },
                         "labels": [
-                            {"text": f"⏳ {match_time}", "position": "top-left", "color": "#aa000000", "text_color": "#ffffff"},
-                            {"text": f"🎙️ {blv_name}", "position": "top-right", "color": "#aa000000", "text_color": "#00ff00"}
+                            {
+                                "text": "● Live" if match_time == "LIVE" else f"⏳ {match_time}",
+                                "position": "top-left",
+                                "color": "#00ffffff",
+                                "text_color": "#ff0000" if match_time == "LIVE" else "#d54f1a"
+                            }
                         ],
                         "sources": [
                             {
                                 "id": f"src-{hash_id}",
-                                "name": "Thiên Đình TV",
+                                "name": "Thiên Đình",
                                 "contents": [
                                     {
                                         "id": f"ctx-{hash_id}",
-                                        "name": "F",
-                                        "stream_links": [
+                                        "name": match_name,
+                                        "streams": [
                                             {
-                                                "id": f"lnk-{hash_id}",
-                                                "name": "Link Live",
-                                                "url": match_url
+                                                "id": f"strm-{hash_id}",
+                                                "name": f"BLV {blv_name}",
+                                                "stream_links": [
+                                                    {
+                                                        "id": f"lnk-{hash_id}",
+                                                        "name": "Link 1",
+                                                        "type": "webview", # Sử dụng webview để hiển thị player của web
+                                                        "default": True,
+                                                        "url": match_url
+                                                    }
+                                                ]
                                             }
                                         ]
                                     }
@@ -100,14 +113,14 @@ class handler(BaseHTTPRequestHandler):
                             }
                         ]
                     })
-        except:
+        exceptException as e:
             pass
 
-        # Dự phòng nếu trống trận
+        # Bản backup phòng hờ lúc không cào được trận nào hoặc lỗi kết nối
         if not channels_list:
             channels_list.append({
                 "id": "td-fallback",
-                "name": "Vào trực tiếp trang chủ Thiên Đình TV",
+                "name": "⚽ Vào trang chủ Thiên Đình TV | LIVE",
                 "type": "single",
                 "display": "thumbnail-only",
                 "enable_detail": False,
@@ -117,17 +130,29 @@ class handler(BaseHTTPRequestHandler):
                     "display": "contain",
                     "url": "https://sv2.thiendinh3.live/assets/images/logo.png"
                 },
-                "labels": [{"text": "LIVE", "position": "top-left", "color": "#ff0000", "text_color": "#ffffff"}],
+                "labels": [{"text": "● Live", "position": "top-left", "color": "#00ffffff", "text_color": "#ff0000"}],
                 "sources": [
                     {
                         "id": "src-fallback",
-                        "name": "Thiên Đình TV",
+                        "name": "Thiên Đình",
                         "contents": [
                             {
                                 "id": "ctx-fallback",
-                                "name": "F",
-                                "stream_links": [
-                                    {"id": "lnk-fallback", "name": "Link Gốc", "url": "https://sv2.thiendinh3.live/trang-chu"}
+                                "name": "Trang Chủ",
+                                "streams": [
+                                    {
+                                        "id": "strm-fallback",
+                                        "name": "Mặc Định",
+                                        "stream_links": [
+                                            {
+                                                "id": "lnk-fallback",
+                                                "name": "Link Gốc",
+                                                "type": "webview",
+                                                "default": True,
+                                                "url": "https://sv2.thiendinh3.live/trang-chu"
+                                            }
+                                        ]
+                                    }
                                 ]
                             }
                         ]
@@ -135,10 +160,10 @@ class handler(BaseHTTPRequestHandler):
                 ]
             })
 
-        # 👑 BỌC NGOÀI BẰNG CẤU TRÚC GỐC CHUẨN ĐÉT CỦA HỘI QUÁN
+        # 👑 BỌC ĐẦU FILE Y HỆT DỮ LIỆU GỐC CỦA HỘI QUÁN TV
         monplayer_json = {
             "id": "thiendinh",
-            "url": "https://thiendinh-tivi.vercel.app",  # URL con bot của bạn
+            "url": "https://thiendinh-tivi.vercel.app", # Thay bằng link Vercel của bạn nếu thích
             "name": "Thiên Đình TV",
             "color": "#1cb57a",
             "grid_number": 3,
@@ -171,3 +196,4 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(monplayer_json, ensure_ascii=False, indent=2).encode('utf-8'))
         return
+                                 
