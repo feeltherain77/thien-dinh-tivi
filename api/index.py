@@ -7,19 +7,18 @@ import hashlib
 class handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
-        # 🚀 DÙNG TRẠM TRUNG CHUYỂN ALLORIGINS ĐỂ LÁCH CLOUDFLARE
+        # Sử dụng trạm trung chuyển AllOrigins để lách Cloudflare của Thiên Đình
         PROXY_URL = "https://api.allorigins.win/get?url=https://sv2.thiendinh3.live/trang-chu"
         
         channels_list = []
         
         try:
-            # Gọi qua trung gian thay vì gọi trực tiếp
             response = requests.get(PROXY_URL, timeout=10)
             if response.status_code == 200:
                 data = response.json()
-                html = data.get('contents', '') # Lấy mã HTML đã được bóc tách
+                html = data.get('contents', '')
                 
-                # Quét mọi link chứa trận đấu
+                # Quét mọi link trận đấu trên trang chủ
                 raw_matches = re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL)
                 
                 for href, content in raw_matches:
@@ -31,7 +30,8 @@ class handler(BaseHTTPRequestHandler):
                     if match_url.startswith('/'):
                         match_url = "https://sv2.thiendinh3.live" + match_url
                         
-                    if any(c['sources'][0]['url'] == match_url for c in channels_list if c.get('sources')):
+                    # Tránh quét trùng bài
+                    if any(c['sources'][0]['contents'][0]['stream_links'][0]['url'] == match_url for c in channels_list if c.get('sources')):
                         continue
 
                     clean_content = re.sub(r'<[^>]+>', ' ', content)
@@ -46,7 +46,7 @@ class handler(BaseHTTPRequestHandler):
 
                     # 🎙️ Bắt tên BLV
                     blv_search = re.search(r'(BLV\s+[^<|\s]+)', clean_content, re.IGNORECASE)
-                    blv_name = blv_search.group(1).strip() if blv_search else "Sôi Động"
+                    blv_name = blv_search.group(1).strip() if blv_search else "Mỳ Tôm"
 
                     # 🖼️ Bắt logo
                     logo_search = re.search(r'(?:src|data-src)="([^"]+)"', content)
@@ -60,9 +60,10 @@ class handler(BaseHTTPRequestHandler):
                     if not match_name or len(match_name) < 3:
                         match_name = "Trận Đấu Đang Diễn Ra"
 
+                    # Tạo ID hash cho đồng bộ
                     hash_id = hashlib.md5(match_url.encode('utf-8')).hexdigest()[:12]
 
-                    # 🔥 CẤU TRÚC PRO CỦA HỘI QUÁN TV
+                    # 👑 COPY CHUẨN ĐÉT CẤU TRÚC 4 TẦNG CỦA HỘI QUÁN TV
                     channels_list.append({
                         "id": f"td-{hash_id}",
                         "name": match_name,
@@ -75,25 +76,60 @@ class handler(BaseHTTPRequestHandler):
                             {"text": f"🎙️ {blv_name}", "position": "top-right", "color": "#aa000000", "text_color": "#00ff00"}
                         ],
                         "sources": [
-                            {"id": f"src-{hash_id}", "name": "Server Thiên Đình", "url": match_url}
+                            {
+                                "id": f"src-{hash_id}",
+                                "name": "Thiên Đình TV",
+                                "contents": [
+                                    {
+                                        "id": f"ctx-{hash_id}",
+                                        "name": "F",
+                                        "stream_links": [
+                                            {
+                                                "id": f"lnk-{hash_id}",
+                                                "name": "Link Live",
+                                                "url": match_url
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
                         ]
                     })
-        except Exception as e:
+        except:
             pass
 
+        # Dự phòng nếu trống trận
         if not channels_list:
             channels_list.append({
                 "id": "td-fallback",
-                "name": "Web đang chặn hoặc Không có trận",
+                "name": "Vào trực tiếp trang chủ Thiên Đình TV",
                 "type": "single",
                 "display": "thumbnail-only",
                 "enable_detail": False,
                 "image": "https://sv2.thiendinh3.live/assets/images/logo.png",
-                "labels": [{"text": "LỖI", "position": "top-left", "color": "#ff0000", "text_color": "#ffffff"}],
-                "sources": [{"id": "src-fallback", "name": "Link Gốc", "url": "https://sv2.thiendinh3.live/trang-chu"}]
+                "labels": [{"text": "LIVE", "position": "top-left", "color": "#ff0000", "text_color": "#ffffff"}],
+                "sources": [
+                    {
+                        "id": "src-fallback",
+                        "name": "Thiên Đình TV",
+                        "contents": [
+                            {
+                                "id": "ctx-fallback",
+                                "name": "F",
+                                "stream_links": [
+                                    {
+                                        "id": "lnk-fallback",
+                                        "name": "Link Gốc",
+                                        "url": "https://sv2.thiendinh3.live/trang-chu"
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                ]
             })
 
-        # Bọc toàn bộ vào chuẩn Groups/Channels
+        # Gộp nhóm tổng
         monplayer_json = {
             "name": "Thiên Đình TV",
             "color": "#1cb57a",
