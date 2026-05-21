@@ -60,17 +60,22 @@ class handler(BaseHTTPRequestHandler):
                     if not match_name or len(match_name) < 3:
                         match_name = "Trận Đấu Đang Diễn Ra"
 
-                    # Tạo ID hash cho đồng bộ
+                    # Tạo ID hash cho đồng bộ các tầng dữ liệu
                     hash_id = hashlib.md5(match_url.encode('utf-8')).hexdigest()[:12]
 
-                    # 👑 COPY CHUẨN ĐÉT CẤU TRÚC 4 TẦNG CỦA HỘI QUÁN TV
+                    # Thêm trận vào danh sách channels theo cấu trúc nâng cao
                     channels_list.append({
                         "id": f"td-{hash_id}",
                         "name": match_name,
                         "type": "single",
                         "display": "thumbnail-only",
                         "enable_detail": False,
-                        "image": match_logo,
+                        "image": {
+                            "padding": 1,
+                            "background_color": "#ececec",
+                            "display": "contain",
+                            "url": match_logo
+                        },
                         "labels": [
                             {"text": f"⏳ {match_time}", "position": "top-left", "color": "#aa000000", "text_color": "#ffffff"},
                             {"text": f"🎙️ {blv_name}", "position": "top-right", "color": "#aa000000", "text_color": "#00ff00"}
@@ -106,7 +111,12 @@ class handler(BaseHTTPRequestHandler):
                 "type": "single",
                 "display": "thumbnail-only",
                 "enable_detail": False,
-                "image": "https://sv2.thiendinh3.live/assets/images/logo.png",
+                "image": {
+                    "padding": 1,
+                    "background_color": "#ececec",
+                    "display": "contain",
+                    "url": "https://sv2.thiendinh3.live/assets/images/logo.png"
+                },
                 "labels": [{"text": "LIVE", "position": "top-left", "color": "#ff0000", "text_color": "#ffffff"}],
                 "sources": [
                     {
@@ -117,11 +127,7 @@ class handler(BaseHTTPRequestHandler):
                                 "id": "ctx-fallback",
                                 "name": "F",
                                 "stream_links": [
-                                    {
-                                        "id": "lnk-fallback",
-                                        "name": "Link Gốc",
-                                        "url": "https://sv2.thiendinh3.live/trang-chu"
-                                    }
+                                    {"id": "lnk-fallback", "name": "Link Gốc", "url": "https://sv2.thiendinh3.live/trang-chu"}
                                 ]
                             }
                         ]
@@ -129,18 +135,30 @@ class handler(BaseHTTPRequestHandler):
                 ]
             })
 
-        # Gộp nhóm tổng
+        # 👑 BỌC NGOÀI BẰNG CẤU TRÚC GỐC CHUẨN ĐÉT CỦA HỘI QUÁN
         monplayer_json = {
+            "id": "thiendinh",
+            "url": "https://thiendinh-tivi.vercel.app",  # URL con bot của bạn
             "name": "Thiên Đình TV",
             "color": "#1cb57a",
-            "grid_number": "3",
-            "author": "Mạnh DZ",
+            "grid_number": 3,
+            "image": {
+                "type": "cover",
+                "url": "https://sv2.thiendinh3.live/assets/images/logo.png"
+            },
+            "notice": {
+                "closeable": True,
+                "icon": "https://kaytee1012.github.io/pngegg.png",
+                "id": "notice",
+                "link": "https://sv2.thiendinh3.live",
+                "text": "Chào mừng bạn đến với kênh Thiên Đình TV - Mạnh DZ"
+            },
             "groups": [
                 {
-                    "id": "thiendinh_live",
-                    "name": "🔴 Live Bóng Đá Hôm Nay",
+                    "id": "live",
+                    "name": "🔴 Live bóng đá",
                     "display": "vertical",
-                    "grid_number": "2",
+                    "grid_number": 2,
                     "enable_detail": False,
                     "channels": channels_list
                 }
