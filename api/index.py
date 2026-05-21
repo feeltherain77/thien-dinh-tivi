@@ -2,92 +2,113 @@ from http.server import BaseHTTPRequestHandler
 import requests
 import re
 import json
+import hashlib
 
 class handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
-        TARGET_URL = "https://sv2.thiendinh3.live/trang-chu"
+        # 🚀 DÙNG TRẠM TRUNG CHUYỂN ALLORIGINS ĐỂ LÁCH CLOUDFLARE
+        PROXY_URL = "https://api.allorigins.win/get?url=https://sv2.thiendinh3.live/trang-chu"
         
-        # BỘ HEADER GIẢ LẬP TRÌNH DUYỆT XỊN ĐỂ QUA MẶT CLOUDFLARE/CHẶN BOT
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
-            "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
-            "Cache-Control": "max-age=0",
-            "Upgrade-Insecure-Requests": "1"
-        }
-        
-        urls_list = []
+        channels_list = []
         
         try:
-            response = requests.get(TARGET_URL, headers=headers, timeout=10)
+            # Gọi qua trung gian thay vì gọi trực tiếp
+            response = requests.get(PROXY_URL, timeout=10)
             if response.status_code == 200:
-                html = response.text
+                data = response.json()
+                html = data.get('contents', '') # Lấy mã HTML đã được bóc tách
                 
-                # QUÉT CỰC MẠNH: Tìm mọi thẻ chứa đường link trên toàn bộ trang web
+                # Quét mọi link chứa trận đấu
                 raw_matches = re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html, re.IGNORECASE | re.DOTALL)
                 
                 for href, content in raw_matches:
                     match_url = href.strip()
                     
-                    # Lọc: Chỉ lấy những link có dấu hiệu là link xem bóng đá (chứa từ khóa live, match, truc-tiep, xem...)
                     if not any(keyword in match_url for keyword in ['/match/', '/live/', '/truc-tiep/', '/xem']):
                         continue
                         
                     if match_url.startswith('/'):
                         match_url = "https://sv2.thiendinh3.live" + match_url
                         
-                    if any(u['url'] == match_url for u in urls_list):
+                    if any(c['sources'][0]['url'] == match_url for c in channels_list if c.get('sources')):
                         continue
 
-                    # Làm sạch HTML bên trong để bóc chữ
                     clean_content = re.sub(r'<[^>]+>', ' ', content)
                     clean_content = re.sub(r'\s+', ' ', clean_content).strip()
                     
-                    if len(clean_content) < 5: # Bỏ qua các nút bấm rác
+                    if len(clean_content) < 5:
                         continue
 
-                    # Bắt Giờ (xx:xx)
+                    # ⏳ Bắt giờ thi đấu
                     time_search = re.search(r'(\d{2}:\d{2})', clean_content)
                     match_time = time_search.group(1) if time_search else "LIVE"
 
-                    # Bắt BLV
-                    blv_search = re.search(r'(BLV\s+\w+)', clean_content, re.IGNORECASE)
-                    blv_name = blv_search.group(1) if blv_search else "Sôi Động"
+                    # 🎙️ Bắt tên BLV
+                    blv_search = re.search(r'(BLV\s+[^<|\s]+)', clean_content, re.IGNORECASE)
+                    blv_name = blv_search.group(1).strip() if blv_search else "Sôi Động"
 
-                    # Xóa giờ và BLV khỏi tên
+                    # 🖼️ Bắt logo
+                    logo_search = re.search(r'(?:src|data-src)="([^"]+)"', content)
+                    match_logo = logo_search.group(1) if logo_search else "https://sv2.thiendinh3.live/assets/images/logo.png"
+                    if match_logo.startswith('/'):
+                        match_logo = "https://sv2.thiendinh3.live" + match_logo
+
+                    # ⚽ Bắt tên trận đấu
                     match_name = clean_content.replace(match_time, "").replace(blv_name, "").strip()
-                    if len(match_name) < 3:
-                        match_name = "Trận đấu đang diễn ra"
+                    match_name = " ".join(match_name.split())
+                    if not match_name or len(match_name) < 3:
+                        match_name = "Trận Đấu Đang Diễn Ra"
 
-                    display_name = f"[{match_time}] {match_name} ({blv_name})"
-                    
-                    # 🚀 CẤU TRÚC JSON "NHÁI" THEO BẢN PRO CỦA HỘI QUÁN
-                    urls_list.append({
-                        "name": display_name,
-                        "url": match_url,
-                        "logo": "https://sv2.thiendinh3.live/assets/images/logo.png",
-                        "group": "Thiên Đình TV Live",
-                        "display": "thumbnail-only",       # Code giao diện pro
-                        "background_color": "#1c1c1c"      # Code giao diện pro
+                    hash_id = hashlib.md5(match_url.encode('utf-8')).hexdigest()[:12]
+
+                    # 🔥 CẤU TRÚC PRO CỦA HỘI QUÁN TV
+                    channels_list.append({
+                        "id": f"td-{hash_id}",
+                        "name": match_name,
+                        "type": "single",
+                        "display": "thumbnail-only",
+                        "enable_detail": False,
+                        "image": match_logo,
+                        "labels": [
+                            {"text": f"⏳ {match_time}", "position": "top-left", "color": "#aa000000", "text_color": "#ffffff"},
+                            {"text": f"🎙️ {blv_name}", "position": "top-right", "color": "#aa000000", "text_color": "#00ff00"}
+                        ],
+                        "sources": [
+                            {"id": f"src-{hash_id}", "name": "Server Thiên Đình", "url": match_url}
+                        ]
                     })
         except Exception as e:
             pass
 
-        # Vẫn giữ 1 dòng dự phòng để biết bot có bị chết hay không
-        if not urls_list:
-            urls_list.append({
-                "name": "[LỖI/TRỐNG] Không quét được hoặc chưa có trận",
-                "url": TARGET_URL,
-                "logo": "https://sv2.thiendinh3.live/assets/images/logo.png",
-                "group": "Thiên Đình TV",
-                "display": "thumbnail-only"
+        if not channels_list:
+            channels_list.append({
+                "id": "td-fallback",
+                "name": "Web đang chặn hoặc Không có trận",
+                "type": "single",
+                "display": "thumbnail-only",
+                "enable_detail": False,
+                "image": "https://sv2.thiendinh3.live/assets/images/logo.png",
+                "labels": [{"text": "LỖI", "position": "top-left", "color": "#ff0000", "text_color": "#ffffff"}],
+                "sources": [{"id": "src-fallback", "name": "Link Gốc", "url": "https://sv2.thiendinh3.live/trang-chu"}]
             })
 
+        # Bọc toàn bộ vào chuẩn Groups/Channels
         monplayer_json = {
             "name": "Thiên Đình TV",
+            "color": "#1cb57a",
+            "grid_number": "3",
             "author": "Mạnh DZ",
-            "urls": urls_list
+            "groups": [
+                {
+                    "id": "thiendinh_live",
+                    "name": "🔴 Live Bóng Đá Hôm Nay",
+                    "display": "vertical",
+                    "grid_number": "2",
+                    "enable_detail": False,
+                    "channels": channels_list
+                }
+            ]
         }
 
         self.send_response(200)
@@ -96,4 +117,3 @@ class handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(json.dumps(monplayer_json, ensure_ascii=False, indent=2).encode('utf-8'))
         return
-        
